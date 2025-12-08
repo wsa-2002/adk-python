@@ -43,11 +43,23 @@ class TestRestApiTool:
 
   @pytest.fixture
   def mock_tool_context(self):
-    """Fixture for a mock OperationParser."""
+    """Fixture for a mock ToolContext."""
     mock_context = MagicMock(spec=ToolContext)
     mock_context.state = State({}, {})
     mock_context.get_auth_response.return_value = {}
     mock_context.request_credential.return_value = {}
+    
+    # Create a mock invocation_context for header_provider tests
+    mock_invocation_context = MagicMock()
+    mock_invocation_context.agent.name = "test_agent"
+    mock_invocation_context.user_id = "test_user"
+    mock_invocation_context.invocation_id = "test_invocation_id"
+    mock_invocation_context.session = MagicMock()
+    mock_invocation_context.session.state = {}
+    mock_invocation_context.run_config = None
+    mock_invocation_context.user_content = None
+    mock_context._invocation_context = mock_invocation_context
+    
     return mock_context
 
   @pytest.fixture
@@ -428,7 +440,7 @@ class TestRestApiTool:
         "test_query_param": "query_value",
     }
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
     assert request_params["method"] == "get"
     assert request_params["url"] == "https://example.com/test"
     assert request_params["json"] == {"param1": "value1", "param2": 123}
@@ -470,7 +482,7 @@ class TestRestApiTool:
     ]
     kwargs = {"array": ["item1", "item2"]}
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     assert request_params["json"] == ["item1", "item2"]
 
@@ -503,7 +515,7 @@ class TestRestApiTool:
     ]
     kwargs = {"input_string": "test_value"}
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     assert request_params["data"] == "test_value"
     assert request_params["headers"]["Content-Type"] == "text/plain"
@@ -542,7 +554,7 @@ class TestRestApiTool:
     ]
     kwargs = {"key1": "value1"}
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     assert request_params["data"] == {"key1": "value1"}
     assert (
@@ -588,7 +600,7 @@ class TestRestApiTool:
     ]
     kwargs = {"file1": b"file_content"}
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     assert request_params["files"] == {"file1": b"file_content"}
     assert request_params["headers"]["Content-Type"] == "multipart/form-data"
@@ -624,7 +636,7 @@ class TestRestApiTool:
     ]
     kwargs = {"data": b"binary_data"}
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     assert request_params["data"] == b"binary_data"
     assert (
@@ -657,7 +669,7 @@ class TestRestApiTool:
     )
     tool.endpoint = endpoint_with_path
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     assert (
         request_params["url"] == "https://example.com/test/123"
@@ -688,7 +700,7 @@ class TestRestApiTool:
     ]
     kwargs = {"x_custom_header": "header_value"}
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     assert request_params["headers"]["X-Custom-Header"] == "header_value"
 
@@ -717,7 +729,7 @@ class TestRestApiTool:
     ]
     kwargs = {"session_id": "cookie_value"}
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     assert request_params["cookies"]["session_id"] == "cookie_value"
 
@@ -755,7 +767,7 @@ class TestRestApiTool:
     ]
     kwargs = {"input": "some_value"}
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     assert request_params["headers"]["Content-Type"] == "application/json"
 
@@ -784,7 +796,7 @@ class TestRestApiTool:
     ]
     kwargs = {"known_param": "value", "unknown_param": "unknown"}
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     # Make sure unknown parameters are ignored and do not raise errors.
     assert "unknown_param" not in request_params["params"]
@@ -806,7 +818,7 @@ class TestRestApiTool:
     )
     tool.set_default_headers({"developer-token": "token"})
 
-    request_params = tool._prepare_request_params([], {})
+    request_params = tool._prepare_request_params([], {}, None)
 
     assert request_params["headers"]["developer-token"] == "token"
 
@@ -842,7 +854,7 @@ class TestRestApiTool:
     params = sample_api_parameters + [header_param]
     kwargs = {"test_body_param": "value", "user_agent": "api-client"}
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     assert request_params["headers"]["Content-Type"] == "application/json"
     assert request_params["headers"]["developer-token"] == "token"
@@ -864,7 +876,7 @@ class TestRestApiTool:
     kwargs = {}
 
     request_params_no_base = tool_no_base._prepare_request_params(
-        params, kwargs
+        params, kwargs, None
     )
     assert request_params_no_base["url"] == "/no_base"
 
@@ -880,7 +892,7 @@ class TestRestApiTool:
     )
 
     request_params_trailing = tool_trailing_slash._prepare_request_params(
-        params, kwargs
+        params, kwargs, None
     )
     assert request_params_trailing["url"] == "https://example.com/trailing"
 
@@ -908,7 +920,7 @@ class TestRestApiTool:
         )
     ]
     kwargs = {"unrecognized_param": None}  # Explicitly passing None
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     # Query param not in sample_operation. It should be ignored.
     assert "unrecognized_param" not in request_params["params"]
@@ -936,7 +948,7 @@ class TestRestApiTool:
     ]
     kwargs = {"param_name": "aaa", "empty_param": ""}
 
-    request_params = tool._prepare_request_params(params, kwargs)
+    request_params = tool._prepare_request_params(params, kwargs, None)
 
     assert "param_name" in request_params["params"]
     assert "empty_param" not in request_params["params"]
@@ -1035,6 +1047,217 @@ class TestRestApiTool:
       assert mock_request.called
       call_kwargs = mock_request.call_args[1]
       assert call_kwargs["verify"] == ca_bundle_path
+
+
+  def test_header_provider_with_valid_context(
+      self,
+      mock_tool_context,
+      sample_endpoint,
+      sample_operation,
+      sample_auth_credential,
+      sample_auth_scheme,
+  ):
+    """Test that header_provider is called and headers are applied."""
+    def custom_header_provider(ctx):
+      return {"X-Custom-Header": "custom-value", "X-Session-Id": "session-123"}
+
+    tool = RestApiTool(
+        name="test_tool",
+        description="Test Tool",
+        endpoint=sample_endpoint,
+        operation=sample_operation,
+        auth_credential=sample_auth_credential,
+        auth_scheme=sample_auth_scheme,
+        header_provider=custom_header_provider,
+    )
+
+    request_params = tool._prepare_request_params([], {}, mock_tool_context)
+
+    assert request_params["headers"]["X-Custom-Header"] == "custom-value"
+    assert request_params["headers"]["X-Session-Id"] == "session-123"
+
+  def test_header_provider_with_none_context(
+      self,
+      sample_endpoint,
+      sample_operation,
+      sample_auth_credential,
+      sample_auth_scheme,
+  ):
+    """Test that header_provider is not called when tool_context is None."""
+    def custom_header_provider(ctx):
+      return {"X-Custom-Header": "custom-value"}
+
+    tool = RestApiTool(
+        name="test_tool",
+        description="Test Tool",
+        endpoint=sample_endpoint,
+        operation=sample_operation,
+        auth_credential=sample_auth_credential,
+        auth_scheme=sample_auth_scheme,
+        header_provider=custom_header_provider,
+    )
+
+    # When tool_context is None, header_provider should not be called
+    request_params = tool._prepare_request_params([], {}, None)
+
+    # Custom header should not be present
+    assert "X-Custom-Header" not in request_params["headers"]
+    # But User-Agent should still be set
+    assert "User-Agent" in request_params["headers"]
+
+  def test_header_provider_without_provider(
+      self,
+      mock_tool_context,
+      sample_endpoint,
+      sample_operation,
+      sample_auth_credential,
+      sample_auth_scheme,
+  ):
+    """Test that headers work normally without header_provider."""
+    tool = RestApiTool(
+        name="test_tool",
+        description="Test Tool",
+        endpoint=sample_endpoint,
+        operation=sample_operation,
+        auth_credential=sample_auth_credential,
+        auth_scheme=sample_auth_scheme,
+        header_provider=None,
+    )
+
+    request_params = tool._prepare_request_params([], {}, mock_tool_context)
+
+    # Only default headers should be present
+    assert "User-Agent" in request_params["headers"]
+
+  def test_header_provider_returns_none(
+      self,
+      mock_tool_context,
+      sample_endpoint,
+      sample_operation,
+      sample_auth_credential,
+      sample_auth_scheme,
+  ):
+    """Test that header_provider returning None is handled gracefully."""
+    def header_provider_returns_none(ctx):
+      return None
+
+    tool = RestApiTool(
+        name="test_tool",
+        description="Test Tool",
+        endpoint=sample_endpoint,
+        operation=sample_operation,
+        auth_credential=sample_auth_credential,
+        auth_scheme=sample_auth_scheme,
+        header_provider=header_provider_returns_none,
+    )
+
+    request_params = tool._prepare_request_params([], {}, mock_tool_context)
+
+    # Should not raise an error, only default headers should be present
+    assert "User-Agent" in request_params["headers"]
+
+  def test_header_provider_overrides_default_headers(
+      self,
+      mock_tool_context,
+      sample_endpoint,
+      sample_operation,
+      sample_auth_credential,
+      sample_auth_scheme,
+  ):
+    """Test that header_provider can override default headers."""
+    def custom_header_provider(ctx):
+      return {"User-Agent": "custom-agent"}
+
+    tool = RestApiTool(
+        name="test_tool",
+        description="Test Tool",
+        endpoint=sample_endpoint,
+        operation=sample_operation,
+        auth_credential=sample_auth_credential,
+        auth_scheme=sample_auth_scheme,
+        header_provider=custom_header_provider,
+    )
+
+    request_params = tool._prepare_request_params([], {}, mock_tool_context)
+
+    # Custom User-Agent should override default
+    assert request_params["headers"]["User-Agent"] == "custom-agent"
+
+  def test_header_provider_with_readonly_context(
+      self,
+      mock_tool_context,
+      sample_endpoint,
+      sample_operation,
+      sample_auth_credential,
+      sample_auth_scheme,
+  ):
+    """Test that header_provider receives ReadonlyContext correctly."""
+    received_context = None
+
+    def custom_header_provider(ctx):
+      nonlocal received_context
+      received_context = ctx
+      return {"X-Agent-Name": ctx.agent_name}
+
+    tool = RestApiTool(
+        name="test_tool",
+        description="Test Tool",
+        endpoint=sample_endpoint,
+        operation=sample_operation,
+        auth_credential=sample_auth_credential,
+        auth_scheme=sample_auth_scheme,
+        header_provider=custom_header_provider,
+    )
+
+    from google.adk.agents.readonly_context import ReadonlyContext
+
+    request_params = tool._prepare_request_params([], {}, mock_tool_context)
+
+    # Verify that the context was passed
+    assert received_context is not None
+    assert isinstance(received_context, ReadonlyContext)
+
+  @patch(
+      "google.adk.tools.openapi_tool.openapi_spec_parser.rest_api_tool.requests.request"
+  )
+  @pytest.mark.asyncio
+  async def test_header_provider_in_full_call(
+      self,
+      mock_request,
+      mock_tool_context,
+      sample_endpoint,
+      sample_operation,
+      sample_auth_scheme,
+      sample_auth_credential,
+  ):
+    """Test header_provider in a full API call."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"result": "success"}
+    mock_request.return_value = mock_response
+
+    def custom_header_provider(ctx):
+      return {"X-Request-Id": "req-123", "X-Trace-Id": "trace-456"}
+
+    tool = RestApiTool(
+        name="test_tool",
+        description="Test Tool",
+        endpoint=sample_endpoint,
+        operation=sample_operation,
+        auth_scheme=sample_auth_scheme,
+        auth_credential=sample_auth_credential,
+        header_provider=custom_header_provider,
+    )
+
+    result = await tool.call(args={}, tool_context=mock_tool_context)
+
+    # Verify the call succeeded
+    assert result == {"result": "success"}
+
+    # Verify custom headers were included in the request
+    assert mock_request.called
+    call_kwargs = mock_request.call_args[1]
+    assert call_kwargs["headers"]["X-Request-Id"] == "req-123"
+    assert call_kwargs["headers"]["X-Trace-Id"] == "trace-456"
 
 
 def test_snake_to_lower_camel():
